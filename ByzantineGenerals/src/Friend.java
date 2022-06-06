@@ -5,11 +5,12 @@ public class Friend extends Thread {
 
     private final Messenger _messenger;
     private final int _me;
-    private final Random _random = new Random();
+    private final Random _random;
 
     public enum Activity { INDOOR, OUTDOOR }
 
-    public Friend(Messenger messenger, int id) {
+    public Friend(Random random, Messenger messenger, int id) {
+        _random = random;
         _messenger = messenger;
         _me = id;
         setName("Friend" + _me);
@@ -18,110 +19,131 @@ public class Friend extends Thread {
     @Override
     public void run() {
         try {
-            Activity activity = _random.nextBoolean() ? Activity.INDOOR : Activity.OUTDOOR;
-            System.out.println("Friend" + _me + ": chose " + activity);
+            Activity myActivity = randomActivity();
+            sendActivity(myActivity);
 
-            // First round
-            System.out.println("Friend" + _me + ": sending " + activity + " to friends");
-            _messenger.sendToOthers(_me, activity);
+            Message[] friendsActivities = receiveFriendsActivities();
+            Message[] myPlan = buildPlan(myActivity, friendsActivities);
+            sendPlan(myPlan);
 
-            Thread.sleep(1000);
+            Message[][] friendsPlans = receiveFriendsPlans();
+            Message[] majorityPlan = buildMajorityPlan(myPlan, friendsPlans);
 
-            Message[] plan = new Message[NUM_FRIENDS];
-            Message[] messages = _messenger.receiveNMessages(_me, NUM_FRIENDS-1);
-            System.out.println("Friend" + _me + ": received " + messagesToString(messages));
-            for (Message m : messages) {
-                plan[m._friend] = m;
-            }
-            plan[_me] = new Message(_me, activity);
-
-            Thread.sleep(1000);
-
-            // Second round
-            System.out.println("Friend" + _me + ": sending friends' choices to friends");
-            for (int i = 0; i < NUM_FRIENDS; ++i) {
-                if (i != _me) {
-                    _messenger.sendToOthers(i, plan[i]._activity);
-                }
-            }
-
-            Message[][] reportedPlan = new Message[NUM_FRIENDS][];
-            for (int i = 0; i < NUM_FRIENDS; ++i) {
-                if (i != _me) {
-                    reportedPlan[i] = _messenger.receiveNMessages(i, NUM_FRIENDS-1);
-                    System.out.println("Friend" + _me + ": received friend" +i+ "'s plan which is " + messagesToString(reportedPlan[i]));
-                }
-            }
-
-            Thread.sleep(1000);
-
-            // First vote
-            Message[] majorityPlan = new Message[NUM_FRIENDS];
-            System.out.println("Friend" + _me + ": determining majority from friends' choices");
-            for (int i = 0; i < NUM_FRIENDS; ++i) {
-                if (i != _me) {
-                    majorityPlan[i] = new Message(i, majority(plan[i], reportedPlan, i));
-                }
-            }
-
-            Thread.sleep(1000);
-
-            // Second vote
-            majorityPlan[_me] = new Message(_me, activity);
-            System.out.println("Friend" + _me + ": my current majority plan is " + messagesToString(majorityPlan));
-
-            Thread.sleep(1000);
-
-            Friend.Activity finalPlan = majority(majorityPlan);
-            System.out.println("Friend" + _me + ": The final plan is for an " + finalPlan + " activity.");
+            Activity finalPlan = determineMajority(majorityPlan);
+            print("my final plan is for an " + finalPlan + " activity.");
         }
         catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private String messagesToString(Message[] messages) {
-        StringBuilder s = new StringBuilder("[");
-        for (Message m : messages) {
-            if (s.length() > 1) s.append(", ");
-            if (m == null) {
-                s.append("null");
-            }
-            else {
-                s.append("(").append(m._friend).append(", ").append(m._activity).append(")");
-            }
-        }
-        return s + "]";
+    private Activity randomActivity() {
+        Activity activity = _random.nextBoolean() ? Activity.INDOOR : Activity.OUTDOOR;
+        print("chose " + activity);
+        return activity;
     }
 
-    private Friend.Activity majority(Message[] messages) {
-        int indoor = 0, outdoor = 0;
-        for (Message message : messages) {
-            if (message != null) { // needed because of the "i != _me" statements above
-                if (message._activity == Activity.OUTDOOR) ++outdoor;
-                else ++indoor;
-            }
-        }
-        return outdoor > indoor ? Activity.OUTDOOR : Activity.INDOOR;
+    private void sendActivity(Activity activity) throws InterruptedException {
+        print("sending " + activity + " to friends");
+        _messenger.send(_me, activity);
+
+        Thread.sleep(1000); // This makes the output easier to follow
     }
 
-    private Friend.Activity majority(Message plan, Message[][] reportedPlan, int friend) {
-        int indoor = 0, outdoor = 0;
-        if (plan._activity == Activity.OUTDOOR) ++outdoor;
-        else ++indoor;
+    private Message[] receiveFriendsActivities() throws InterruptedException {
+        Message[] messages = _messenger.receive(_me, NUM_FRIENDS-1);
+        print("received friends' activities " + toString(messages));
 
-        for (Message[] messages : reportedPlan) {
+        Thread.sleep(1000); // This makes the output easier to follow
+
+        return messages;
+    }
+
+    private Message[] buildPlan(Activity myActivity, Message[] friendsActivities) {
+        Message[] plan = new Message[NUM_FRIENDS];
+        for (Message m : friendsActivities) {
+            plan[m._friend] = m;
+        }
+        plan[_me] = new Message(_me, myActivity);
+        return plan;
+    }
+
+    private void sendPlan(Message[] myPlan) throws InterruptedException {
+        print("sending my plan to friends");
+        for (int i = 0; i < NUM_FRIENDS; ++i) {
+            if (i != _me) {
+                _messenger.send(i, myPlan[i]._activity);
+            }
+        }
+    }
+
+    private Message[][] receiveFriendsPlans() throws InterruptedException {
+        Message[][] friendsPlans = new Message[NUM_FRIENDS][];
+        for (int i = 0; i < NUM_FRIENDS; ++i) {
+            if (i != _me) {
+                friendsPlans[i] = _messenger.receive(i, NUM_FRIENDS-1);
+                print("received friend" +i+ "'s plan which is " + toString(friendsPlans[i]));
+            }
+        }
+
+        Thread.sleep(1000); // This makes the output easier to follow
+        return friendsPlans;
+    }
+
+    private Message[] buildMajorityPlan(Message[] myPlan, Message[][] friendsPlans) throws InterruptedException {
+        Message[] majorityPlan = new Message[NUM_FRIENDS];
+        for (int i = 0; i < NUM_FRIENDS; ++i) {
+            if (i != _me) {
+                majorityPlan[i] = new Message(i, determineFriendsMajority(i, myPlan[i], friendsPlans));
+            }
+        }
+
+        majorityPlan[_me] = myPlan[_me];
+        print("my majority plan is " + toString(majorityPlan));
+
+        Thread.sleep(1000); // This makes the output easier to follow
+        return majorityPlan;
+    }
+
+    private Friend.Activity determineFriendsMajority(int friend, Message myPlanForFriend, Message[][] friendsPlanForFriend) {
+        // First consider what our plan is for this friend
+        Majority majority = new Majority();
+        majority.accumulate(myPlanForFriend);
+
+        // Now consider what the plan that each friend has for this friend
+        for (Message[] messages : friendsPlanForFriend) {
             if (messages == null) { // needed because of the "i != _me" statements above
                 continue;
             }
             for (Message m : messages) {
                 if (m._friend == friend) {
-                    if (m._activity == Activity.OUTDOOR) ++outdoor;
-                    else ++indoor;
+                    majority.accumulate(m);
                 }
             }
         }
 
+        return majority.get();
+    }
+
+    private String toString(Message[] messages) {
+        StringBuilder s = new StringBuilder("[");
+        for (Message m : messages) {
+            if (s.length() > 1) s.append(", ");
+            s.append("(").append(m._friend).append(", ").append(m._activity).append(")");
+        }
+        return s + "]";
+    }
+
+    private Friend.Activity determineMajority(Message[] majorityPlan) {
+        int indoor = 0, outdoor = 0;
+        for (Message message : majorityPlan) {
+            if (message._activity == Activity.OUTDOOR) ++outdoor;
+            else ++indoor;
+        }
         return outdoor > indoor ? Activity.OUTDOOR : Activity.INDOOR;
+    }
+
+    private void print(String s) {
+        System.out.println(getName() + ": " + s);
     }
 }

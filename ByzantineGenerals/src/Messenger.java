@@ -12,7 +12,7 @@ public class Messenger {
         }
     }
 
-    public void sendToOthers(int me, Friend.Activity activity) throws InterruptedException {
+    public void send(int me, Friend.Activity activity) throws InterruptedException {
         for (int i = 0; i < Friend.NUM_FRIENDS; ++i) {
             // don't put the sender's message into the sender's queue
             if (i != me) {
@@ -21,7 +21,7 @@ public class Messenger {
         }
     }
 
-    public Message[] receiveNMessages(int me, int n) throws InterruptedException {
+    public Message[] receive(int me, int n) throws InterruptedException {
         Message[] messages = new Message[n];
         int i = 0;
         while (i < n) {

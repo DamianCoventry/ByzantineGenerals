@@ -1,11 +1,14 @@
+import java.util.Random;
+
 public class Main {
     public static void main(String[] args) {
         try {
             final Thread[] friends = new Friend[Friend.NUM_FRIENDS];
             final Messenger messenger = new Messenger();
+            final Random random = new Random();
 
             for (int i = 0; i < Friend.NUM_FRIENDS; ++i) {
-                friends[i] = new Friend(messenger, i);
+                friends[i] = new Friend(random, messenger, i);
                 friends[i].start();
             }
 
