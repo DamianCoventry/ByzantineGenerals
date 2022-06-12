@@ -4,14 +4,14 @@ public class Messenger {
     private final LinkedList<Message>[] _messages;
     @SuppressWarnings("unchecked")
     public Messenger() {
-        _messages = new LinkedList[Friend.NUM_FRIENDS];
-        for (int i = 0; i < Friend.NUM_FRIENDS; ++i) {
+        _messages = new LinkedList[LoyalFriend.NUM_FRIENDS];
+        for (int i = 0; i < LoyalFriend.NUM_FRIENDS; ++i) {
             _messages[i] = new LinkedList<>();
         }
     }
 
     // protect the _messages container
-    public synchronized void send(int to, int from, int forWhom, Friend.Activity activity, Message.Round round) {
+    public synchronized void send(int to, int from, int forWhom, LoyalFriend.Activity activity, Message.Round round) {
         _messages[to].push(new Message(to, from, forWhom, activity, round));
     }
 

@@ -3,36 +3,36 @@ import java.util.LinkedList;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
-public class Friend extends Thread {
+// This is base class for friends. The UnreliableFriend and DisloyalFriend classes override the two
+// send methods within this class to that behaviour can be changed.
+
+public class LoyalFriend extends Thread {
     public static final int NUM_FRIENDS = 4;
 
     public enum Activity { INDOOR, OUTDOOR, DID_NOT_RESPOND }
-    private final int _me;
-    private final Random _random;
-    private final Messenger _messenger;
+    protected final int _me;
+    protected final Random _random;
+    protected final Messenger _messenger;
 
     // Log level constants
-    private static final int BRIEF = 1;     // prints initial choice and final plan. Fewest log messages.
-    private static final int INFO = 2;      // prints received plans and majority plans
-    private static final int DEBUG = 3;     // prints reported and majority plan counts
-    private static final int TRACE = 4;     // prints all sent and received messages. Most log messages.
+    protected static final int BRIEF = 1;     // prints initial choice and final plan. Fewest log messages.
+    protected static final int INFO = 2;      // prints received plans and majority plans
+    protected static final int DEBUG = 3;     // prints reported and majority plan counts
+    protected static final int TRACE = 4;     // prints all sent and received messages. Most log messages.
 
     private final int _logLevel = INFO; // <--- change this to see more or fewer log messages
 
-    public Friend(int id, Random random, Messenger messenger) {
+    public LoyalFriend(int id, Random random, Messenger messenger) {
         _me = id;
         _random = random;
         _messenger = messenger;
-        setName("Friend" + _me);
+        setName("LoyalFriend" + _me);
     }
 
     @Override
     public void run() {
         try {
-            // Randomly choose an activity
-            Activity[] plan = new Activity[NUM_FRIENDS];
-            plan[_me] = _random.nextBoolean() ? Activity.INDOOR : Activity.OUTDOOR;
-            print(BRIEF, "initial choice " + plan[_me]);
+            Activity[] plan = chooseRandomActivity();
 
             // First round -- exchange plans.
             sendPlanToOthers(plan);
@@ -52,9 +52,20 @@ public class Friend extends Thread {
         }
     }
 
-    private void sendPlanToOthers(Activity[] plan) {
+    private Activity[] chooseRandomActivity() {
+        Activity[] plan = new Activity[NUM_FRIENDS];
+        plan[_me] = randomActivity();
+        print(BRIEF, "initial choice " + plan[_me]);
+        return plan;
+    }
+
+    protected Activity randomActivity() {
+        return _random.nextBoolean() ? Activity.INDOOR : Activity.OUTDOOR;
+    }
+
+    protected void sendPlanToOthers(Activity[] plan) {
         for (int id = 0; id < NUM_FRIENDS; ++id) {
-            if (id != this._me) {
+            if (id != this._me) { // Don't send ourselves a message
                 _messenger.send(id, _me, _me, plan[_me], Message.Round._1);  // synchronised
                 print(TRACE, "sent " + plan[_me] + " to Friend" + id + " for Friend" + _me);
             }
@@ -63,10 +74,8 @@ public class Friend extends Thread {
 
     @SuppressWarnings("BusyWait")
     private void receivePlanFromOthers(Activity[] plan) throws InterruptedException {
-        final LinkedList<Integer> responses = new LinkedList<>();
-        for (int id = 0; id < NUM_FRIENDS; ++id) {
-            if (id != _me) responses.add(id);
-        }
+        // collect the IDs of the friends we expect to respond into a container.
+        LinkedList<Integer> responses = getExpected1stRoundResponses();
 
         long startTime = System.nanoTime();
         final long ONE_SECOND = TimeUnit.SECONDS.toNanos(1);
@@ -94,13 +103,22 @@ public class Friend extends Thread {
         print(INFO, "received plans " + Arrays.toString(plan));
     }
 
-    private void sendOthersPlansToOthers(Activity[] plan) {
+    private LinkedList<Integer> getExpected1stRoundResponses() {
+        // For the first round, we expect responses from everyone else
+        final LinkedList<Integer> ids = new LinkedList<>();
+        for (int id = 0; id < NUM_FRIENDS; ++id) {
+            if (id != _me) ids.add(id);
+        }
+        return ids;
+    }
+
+    protected void sendOthersPlansToOthers(Activity[] plan) {
         for (int idA = 0; idA < NUM_FRIENDS; ++idA) {
             if (idA == this._me) {
-                continue;
+                continue; // Don't send ourselves a message
             }
             for (int idB = 0; idB < NUM_FRIENDS; ++idB) {
-                if (idB != this._me && idB != idA) {
+                if (idB != this._me && idB != idA) { // Exclude us, and prevent the friend sending to themselves
                     _messenger.send(idB, _me, idA, plan[idA], Message.Round._2);  // synchronised
                     print(TRACE, "sent " + plan[idA] + " to Friend" + idB + " for Friend" + idA);
                 }
@@ -108,28 +126,10 @@ public class Friend extends Thread {
         }
     }
 
-    private static class Pair {
-        public int _from;
-        public int _forWhom;
-        public Pair(int from, int forWhom) {
-            _from = from;
-            _forWhom = forWhom;
-        }
-    }
-
     @SuppressWarnings("BusyWait")
     private Activity[][] receiveOthersPlansFromOthers() throws InterruptedException {
-        final LinkedList<Pair> responses = new LinkedList<>();
-        for (int idA = 0; idA < NUM_FRIENDS; ++idA) {
-            if (idA == this._me) {
-                continue;
-            }
-            for (int idB = 0; idB < NUM_FRIENDS; ++idB) {
-                if (idB != this._me && idB != idA) {
-                    responses.add(new Pair(idB, idA));
-                }
-            }
-        }
+        // collect the IDs of the friends we expect to respond into a container.
+        LinkedList<Pair> responses = getExpected2ndRoundResponses();
 
         long startTime = System.nanoTime();
         final long ONE_SECOND = TimeUnit.SECONDS.toNanos(1);
@@ -157,8 +157,38 @@ public class Friend extends Thread {
         }
 
         print(INFO, "received reportedPlan " + toString(reportedPlan));
-
         return reportedPlan;
+    }
+
+    private static class Pair {
+        public int _from;
+        public int _forWhom;
+        public Pair(int from, int forWhom) {
+            _from = from;
+            _forWhom = forWhom;
+        }
+    }
+
+    private LinkedList<Pair> getExpected2ndRoundResponses() {
+        // For the second round, we expect two responses from everyone else.
+        // How that works out is as follows:
+        //  - There are four friends.
+        //  - We don't send a message to ourselves.
+        //  - That leaves 3 possible responses.
+        //  - We don't expect a friend to send a message about themselves.
+        //  - That leaves 2 expected responses.
+        final LinkedList<Pair> ids = new LinkedList<>();
+        for (int idA = 0; idA < NUM_FRIENDS; ++idA) {
+            if (idA == this._me) {
+                continue; // Don't send ourselves a message
+            }
+            for (int idB = 0; idB < NUM_FRIENDS; ++idB) {
+                if (idB != this._me && idB != idA) { // Don't include us, or the friend
+                    ids.add(new Pair(idB, idA));
+                }
+            }
+        }
+        return ids;
     }
 
     private String toString(Activity[][] reportedPlan) {
@@ -213,7 +243,7 @@ public class Friend extends Thread {
         return out > in ? Activity.OUTDOOR : Activity.INDOOR;
     }
 
-    private void print(int logLevel, String s) {
+    protected void print(int logLevel, String s) {
         if (logLevel <= _logLevel) {
             System.out.println(getName() + ": " + s);
         }
