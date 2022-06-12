@@ -1,37 +1,28 @@
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.LinkedList;
 
 public class Messenger {
-    private final static int MAX_QUEUE_DEPTH = 10;
-    private final LinkedBlockingQueue<Message>[] _messages;
-
-    @SuppressWarnings (value="unchecked")
+    private final LinkedList<Message>[] _messages;
+    @SuppressWarnings("unchecked")
     public Messenger() {
-        _messages = new LinkedBlockingQueue[LoyalFriend.NUM_FRIENDS];
-        for (int i = 0; i < LoyalFriend.NUM_FRIENDS; ++i) {
-            _messages[i] = new LinkedBlockingQueue<>(MAX_QUEUE_DEPTH);
+        _messages = new LinkedList[Friend.NUM_FRIENDS];
+        for (int i = 0; i < Friend.NUM_FRIENDS; ++i) {
+            _messages[i] = new LinkedList<>();
         }
     }
 
-    public void send(int me, LoyalFriend.Activity activity) throws InterruptedException {
-        for (int i = 0; i < LoyalFriend.NUM_FRIENDS; ++i) {
-            // don't put the sender's message into the sender's queue
-            if (i != me) {
-                _messages[i].put(new Message(me, activity));
-            }
-        }
+    // protect the _messages container
+    public synchronized void send(int to, int from, int forWhom, Friend.Activity activity, Message.Round round) {
+        _messages[to].push(new Message(to, from, forWhom, activity, round));
     }
 
-    public Message[] receive(String name, int me, int n) throws InterruptedException {
-        Message[] messages = new Message[n];
-        int i = 0;
-        while (i < n) {
-            messages[i] = _messages[me].poll(1000, TimeUnit.MILLISECONDS); // Returns null if times out
-            if (messages[i] == null) {
-                System.out.println(name + ": Timed out waiting for a message.");
+    // protect the _messages container
+    public synchronized Message receive(int to, int from, int forWhom, Message.Round round) {
+        for (Message m : _messages[to]) {
+            if (m._from == from && m._forWhom == forWhom && m._round == round) {
+                _messages[to].remove(m);
+                return m;
             }
-            ++i;
         }
-        return messages;
+        return null;
     }
 }
