@@ -3,8 +3,8 @@ import java.util.LinkedList;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
-// This is base class for friends. The UnreliableFriend and DisloyalFriend classes override the two
-// send methods within this class to that behaviour can be changed.
+// This is base class for friends. The UnreliableFriend and DisloyalFriend classes derive from this class, then
+// override the two send methods within this class so that behaviour can be changed.
 
 public class LoyalFriend extends Thread {
     public static final int NUM_FRIENDS = 4;
